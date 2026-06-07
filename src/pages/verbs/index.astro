@@ -1,0 +1,128 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { supabase } from '../../lib/supabase.js';
+
+const url = new URL(Astro.request.url);
+const search = url.searchParams.get('q') || '';
+const filterGroup = url.searchParams.get('group') || '';
+const filterIrr = url.searchParams.get('irregular') || '';
+
+let query = supabase.from('verbs').select('*').order('infinitive');
+if (search) query = query.or(`infinitive.ilike.%${search}%,fr.ilike.%${search}%`);
+if (filterGroup) query = query.eq('group_num', parseInt(filterGroup));
+if (filterIrr === '1') query = query.eq('is_irregular', true);
+
+const { data: verbs } = await query;
+const { data: allVerbs } = await supabase.from('verbs').select('id');
+const total = allVerbs?.length ?? 0;
+---
+
+<Layout title="Verbes">
+  <div class="container page-verbs">
+
+    <div class="verbs-header">
+      <div>
+        <h1 class="serif">Verbes</h1>
+        <p class="text-muted">{total} verbes essentiels</p>
+      </div>
+      <a href="/verbs/new" class="btn btn-primary" style="padding:7px 16px;font-size:13px;">+ Verbe</a>
+    </div>
+
+    <div class="groups-strip">
+      <div class="group-pill"><span class="serif text-gold">I</span><span class="text-faint">infinitif en <em>-a</em></span></div>
+      <div class="group-pill"><span class="serif text-gold">II</span><span class="text-faint">infinitif en <em>-ea</em></span></div>
+      <div class="group-pill"><span class="serif text-gold">III</span><span class="text-faint">infinitif en <em>-e</em></span></div>
+      <div class="group-pill"><span class="serif text-gold">IV</span><span class="text-faint">infinitif en <em>-i / -î</em></span></div>
+    </div>
+
+    <form method="GET" class="filter-form">
+      <input type="text" name="q" value={search} placeholder="Rechercher…" class="form-input filter-search" />
+      <select name="group" class="form-input filter-select">
+        <option value="">Tous les groupes</option>
+        <option value="1" selected={filterGroup==='1'}>Groupe I (-a)</option>
+        <option value="2" selected={filterGroup==='2'}>Groupe II (-ea)</option>
+        <option value="3" selected={filterGroup==='3'}>Groupe III (-e)</option>
+        <option value="4" selected={filterGroup==='4'}>Groupe IV (-i/-î)</option>
+      </select>
+      <select name="irregular" class="form-input filter-select-sm">
+        <option value="">Tous</option>
+        <option value="1" selected={filterIrr==='1'}>Irréguliers</option>
+      </select>
+      <div class="filter-actions">
+        <button type="submit" class="btn btn-primary">OK</button>
+        {(search || filterGroup || filterIrr) && <a href="/verbs" class="btn">✕</a>}
+      </div>
+    </form>
+
+    <div class="verbs-list">
+      {verbs?.map(verb => (
+        <a href={`/verbs/${encodeURIComponent(verb.infinitive.replace(/^a /, ''))}`} class="verb-item card">
+          <div class="verb-main">
+            <div class="verb-inf serif">{verb.infinitive}</div>
+            <div class="verb-fr">{verb.fr}</div>
+            {verb.notes && <div class="verb-note">{verb.notes}</div>}
+          </div>
+          <div class="verb-meta">
+            <span class="badge badge-blue">grp {verb.group_num}</span>
+            {verb.is_irregular && <span class="badge badge-red">irrég.</span>}
+            <span class="verb-arrow text-faint">›</span>
+          </div>
+        </a>
+      ))}
+    </div>
+
+    {verbs?.length === 0 && (
+      <div style="text-align:center;padding:60px 0;color:var(--text-faint);">
+        <div class="serif" style="font-size:22px;margin-bottom:10px;">Aucun résultat</div>
+        <a href="/verbs" class="btn" style="margin-top:8px;">Réinitialiser</a>
+      </div>
+    )}
+  </div>
+</Layout>
+
+<style>
+  .page-verbs { padding-top: 32px; padding-bottom: 40px; }
+  .verbs-header { margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+  .verbs-header h1 { font-size: 30px; margin-bottom: 4px; }
+
+  .groups-strip { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+  .group-pill {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 14px; border-radius: var(--radius-pill);
+    background: var(--bg-card); border: 0.5px solid var(--border); font-size: 13px;
+  }
+  .group-pill .serif { font-size: 16px; }
+
+  .filter-form { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; align-items: center; }
+  .filter-search { flex: 1; min-width: 140px; }
+  .filter-select { min-width: 150px; }
+  .filter-select-sm { min-width: 110px; }
+  .filter-actions { display: flex; gap: 6px; }
+
+  .verbs-list { display: flex; flex-direction: column; gap: 8px; }
+  .verb-item {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; padding: 14px 18px; text-decoration: none; transition: border-color 0.18s;
+  }
+  .verb-item:hover { border-color: var(--border-hover); }
+  .verb-main { flex: 1; min-width: 0; }
+  .verb-inf { font-size: 17px; margin-bottom: 2px; color: var(--text);}
+  .verb-fr { font-size: 14px; font-style: italic; color: var(--text-muted); }
+  .verb-note { font-size: 12px; color: var(--text-faint); margin-top: 3px; }
+  .verb-meta { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .verb-arrow { font-size: 18px; margin-left: 4px; }
+
+  .verb-item { color: var(--text); }
+
+  @media (max-width: 600px) {
+    .page-verbs { padding-top: 20px; }
+    .groups-strip { gap: 6px; }
+    .group-pill { font-size: 12px; padding: 6px 10px; }
+    .filter-form { flex-direction: column; }
+    .filter-search, .filter-select, .filter-select-sm { width: 100%; min-width: unset; }
+    .filter-actions { width: 100%; }
+    .filter-actions .btn { flex: 1; justify-content: center; }
+    .verb-item { padding: 12px 14px; }
+    .verb-inf { font-size: 15px; }
+  }
+</style>

@@ -1,0 +1,247 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { supabase } from '../../lib/supabase.js';
+
+const { slug } = Astro.params;
+const infinitive = `a ${decodeURIComponent(slug)}`;
+
+const { data: verb } = await supabase
+  .from('verbs').select('*').eq('infinitive', infinitive).single();
+
+if (!verb) return Astro.redirect('/verbs');
+
+const { data: conjugations } = await supabase
+  .from('verb_conjugations')
+  .select('*')
+  .eq('verb_id', verb.id)
+  .order('tense');
+
+const persons = ['eu', 'tu', 'el/ea', 'noi', 'voi', 'ei/ele'];
+const tenses = [
+  { key: 'prezent',       label: 'Présent',        sub: 'prezent' },
+  { key: 'perfect_compus',label: 'Passé composé',  sub: 'perfect compus' },
+  { key: 'viitor',        label: 'Futur',           sub: 'viitor' },
+];
+
+const byTense = {};
+for (const c of (conjugations ?? [])) {
+  if (!byTense[c.tense]) byTense[c.tense] = {};
+  byTense[c.tense][c.person] = c.form;
+}
+
+const groupLabel = { 1: 'Groupe I (-a)', 2: 'Groupe II (-ea)', 3: 'Groupe III (-e)', 4: 'Groupe IV (-i/-î)' };
+---
+
+<Layout title={verb.infinitive}>
+  <div class="container page-verb">
+
+    <div class="verb-breadcrumb">
+      <a href="/verbs">← Verbes</a>
+    </div>
+
+    <!-- Header -->
+    <div class="verb-header">
+      <h1 class="serif verb-title">{verb.infinitive}</h1>
+      <p class="verb-fr">{verb.fr}</p>
+      <div class="verb-badges">
+        <span class="badge badge-blue">{groupLabel[verb.group_num]}</span>
+        {verb.is_irregular && <span class="badge badge-red">irrégulier</span>}
+      </div>
+      {verb.notes && <p class="verb-notes">{verb.notes}</p>}
+    </div>
+
+    <!-- Tableaux de conjugaison -->
+    {tenses.map(({ key, label, sub }) => (
+      byTense[key] ? (
+        <section class="conj-section">
+          <div class="conj-header">
+            <div class="section-label" style="margin-bottom:0;">{label}</div>
+            <span class="text-faint" style="font-size:12px;font-style:italic;">{sub}</span>
+          </div>
+          <div class="conj-table">
+            {persons.map(person => (
+              byTense[key][person] ? (
+                <div class="conj-row">
+                  <span class="conj-person">{person}</span>
+                  <span class="conj-form serif">{byTense[key][person]}</span>
+                </div>
+              ) : null
+            ))}
+          </div>
+        </section>
+      ) : (
+        <section class="conj-section conj-empty">
+          <div class="conj-header">
+            <div class="section-label" style="margin-bottom:0;">{label}</div>
+          </div>
+          <p class="text-faint" style="font-size:13px;padding:12px 0;">Conjugaison non encore ajoutée.</p>
+        </section>
+      )
+    ))}
+
+    <!-- Drill mode -->
+    <section class="drill-section card card-gold">
+      <div class="section-label">Mode drill — présent</div>
+      {byTense['prezent'] ? (
+        <div id="drill-container">
+          <div id="drill-card">
+            <div class="drill-prompt">
+              <span class="serif text-gold drill-person" id="drill-person">eu</span>
+              <span class="serif drill-verb">{verb.infinitive}</span>
+            </div>
+            <input
+              type="text"
+              id="drill-input"
+              class="form-input drill-input"
+              placeholder="ta réponse…"
+              autocomplete="off"
+              autocorrect="off"
+              autocapitalize="off"
+              spellcheck="false"
+            />
+            <div id="drill-feedback" class="drill-feedback"></div>
+            <div class="drill-actions">
+              <button id="drill-check" class="btn btn-primary">Vérifier</button>
+              <button id="drill-next" class="btn" style="display:none;">Suivant →</button>
+            </div>
+          </div>
+          <div id="drill-score" class="drill-score">
+            <span id="score-good" class="text-gold">0</span> /
+            <span id="score-total" class="text-faint">0</span>
+          </div>
+        </div>
+      ) : (
+        <p class="text-faint" style="font-size:13px;">Aucune conjugaison disponible pour le drill.</p>
+      )}
+    </section>
+
+    <div style="margin-top:20px;">
+      <a href="/verbs" class="btn">← Retour aux verbes</a>
+    </div>
+
+  </div>
+</Layout>
+
+<script define:vars={{ conjugations: byTense['prezent'] ?? {}, persons: ['eu','tu','el/ea','noi','voi','ei/ele'] }}>
+  const queue = persons.filter(p => conjugations[p]);
+  let idx = 0;
+  let good = 0;
+  let total = 0;
+
+  const personEl = document.getElementById('drill-person');
+  const input = document.getElementById('drill-input');
+  const feedback = document.getElementById('drill-feedback');
+  const checkBtn = document.getElementById('drill-check');
+  const nextBtn = document.getElementById('drill-next');
+  const scoreGood = document.getElementById('score-good');
+  const scoreTotal = document.getElementById('score-total');
+
+  function shuffle(arr) { return [...arr].sort(() => Math.random() - 0.5); }
+  let shuffled = shuffle(queue);
+
+  function load() {
+    const person = shuffled[idx % shuffled.length];
+    if (personEl) personEl.textContent = person;
+    if (input) { input.value = ''; input.style.borderColor = ''; input.focus(); }
+    if (feedback) { feedback.textContent = ''; feedback.className = 'drill-feedback'; }
+    if (checkBtn) checkBtn.style.display = 'inline-flex';
+    if (nextBtn) nextBtn.style.display = 'none';
+    if (idx > 0 && idx % queue.length === 0) shuffled = shuffle(queue);
+  }
+
+  function check() {
+    const person = shuffled[idx % shuffled.length];
+    const correct = conjugations[person]?.toLowerCase().trim();
+    const answer = input?.value.toLowerCase().trim();
+    total++;
+    if (answer === correct) {
+      good++;
+      if (feedback) { feedback.textContent = '✓ Correct !'; feedback.className = 'drill-feedback correct'; }
+      if (input) input.style.borderColor = 'rgba(100,200,120,0.5)';
+    } else {
+      if (feedback) { feedback.innerHTML = `✗ <strong>${conjugations[person]}</strong>`; feedback.className = 'drill-feedback wrong'; }
+      if (input) input.style.borderColor = 'rgba(192,57,43,0.5)';
+    }
+    if (scoreGood) scoreGood.textContent = good;
+    if (scoreTotal) scoreTotal.textContent = total;
+    if (checkBtn) checkBtn.style.display = 'none';
+    if (nextBtn) nextBtn.style.display = 'inline-flex';
+  }
+
+  checkBtn?.addEventListener('click', check);
+  nextBtn?.addEventListener('click', () => { idx++; load(); });
+  input?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      if (nextBtn?.style.display === 'none') check();
+      else { idx++; load(); }
+    }
+  });
+
+  load();
+</script>
+
+<style>
+  .page-verb { padding-top: 28px; padding-bottom: 60px; max-width: 680px; }
+
+  .verb-breadcrumb { font-size: 13px; margin-bottom: 22px; }
+  .verb-breadcrumb a { color: var(--text-faint); text-decoration: none; }
+
+  .verb-header { margin-bottom: 28px; }
+  .verb-title { font-size: 38px; line-height: 1; margin-bottom: 6px; }
+  .verb-fr { font-size: 18px; font-style: italic; color: var(--text-muted); margin-bottom: 10px; }
+  .verb-badges { display: flex; gap: 8px; flex-wrap: wrap; }
+  .verb-notes { font-size: 13px; color: var(--text-faint); margin-top: 8px; font-style: italic; }
+
+  /* Conjugaison */
+  .conj-section { margin-bottom: 16px; }
+  .conj-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .conj-table {
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .conj-row {
+    display: grid;
+    grid-template-columns: 90px 1fr;
+    padding: 11px 16px;
+    border-top: 0.5px solid var(--border);
+    align-items: center;
+    gap: 16px;
+  }
+  .conj-row:first-child { border-top: none; }
+  .conj-row:nth-child(even) { background: rgba(255,255,255,0.025); }
+  .conj-person { font-size: 13px; color: var(--text-faint); }
+  .conj-form { font-size: 17px; color: var(--text); }
+
+  /* Drill */
+  .drill-section { margin-top: 24px; padding: 22px; }
+  .drill-prompt {
+    display: flex; align-items: baseline; gap: 12px;
+    margin-bottom: 16px; flex-wrap: wrap;
+  }
+  .drill-person { font-size: 26px; }
+  .drill-verb { font-size: 20px; color: var(--text-muted); }
+  .drill-input { font-size: 16px; margin-bottom: 10px; }
+  .drill-feedback {
+    font-size: 14px; min-height: 22px; margin-bottom: 12px;
+    font-style: italic; color: var(--text-faint);
+  }
+  .drill-feedback.correct { color: #7ecf8e; font-style: normal; }
+  .drill-feedback.wrong { color: var(--red-soft); font-style: normal; }
+  .drill-feedback strong { color: var(--text); }
+  .drill-actions { display: flex; gap: 8px; }
+  .drill-score { margin-top: 14px; font-size: 13px; text-align: right; }
+
+  @media (max-width: 600px) {
+    .page-verb { padding-top: 20px; }
+    .verb-title { font-size: 30px; }
+    .verb-fr { font-size: 16px; }
+    .conj-row { grid-template-columns: 70px 1fr; padding: 10px 14px; }
+    .conj-form { font-size: 15px; }
+    .drill-actions { flex-direction: column; }
+    .drill-actions .btn { width: 100%; justify-content: center; }
+  }
+</style>

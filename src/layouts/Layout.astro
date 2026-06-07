@@ -31,6 +31,7 @@ const currentPath = Astro.url.pathname;
     <ul class="nav-links" id="nav-links">
       <li><a href="/" class={currentPath === '/' ? 'active' : ''}>Accueil</a></li>
       <li><a href="/lessons" class={currentPath.startsWith('/lessons') && currentPath !== '/lessons/new' ? 'active' : ''}>Leçons</a></li>
+      <li><a href="/verbs" class={currentPath.startsWith('/verbs') ? 'active' : ''}>Verbes</a></li>
       <li><a href="/vocabulary" class={currentPath.startsWith('/vocabulary') ? 'active' : ''}>Vocabulaire</a></li>
       <li><a href="/flashcards" class={currentPath.startsWith('/flashcards') ? 'active' : ''}>Flashcards</a></li>
       <li><a href="/exercises" class={currentPath.startsWith('/exercises') ? 'active' : ''}>Exercices</a></li>
@@ -60,6 +61,10 @@ const currentPath = Astro.url.pathname;
     <a href="/lessons/new" class={currentPath === '/lessons/new' ? 'active bottom-nav-add' : 'bottom-nav-add'}>
       <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
       <span>Ajouter</span>
+    </a>
+    <a href="/verbs" class={currentPath.startsWith('/verbs') ? 'active' : ''}>
+      <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M4 6h16M4 10h10M4 14h12M4 18h8"/></svg>
+      <span>Verbes</span>
     </a>
     <a href="/flashcards" class={currentPath.startsWith('/flashcards') ? 'active' : ''}>
       <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M16 2H8M12 2v4"/></svg>

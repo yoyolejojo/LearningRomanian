@@ -1,0 +1,198 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { supabase } from '../../lib/supabase.js';
+
+let error = null;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const infinitive = form.get('infinitive')?.toString().trim();
+  const fr         = form.get('fr')?.toString().trim();
+  const group_num  = parseInt(form.get('group_num'));
+  const is_irregular = form.get('is_irregular') === 'on';
+  const notes      = form.get('notes')?.toString().trim() || null;
+
+  if (!infinitive || !fr || !group_num) {
+    error = 'L\'infinitif, la traduction et le groupe sont obligatoires.';
+  } else {
+    const { data: existing } = await supabase
+      .from('verbs').select('id').eq('infinitive', infinitive).single();
+    if (existing) {
+      error = `Le verbe "${infinitive}" existe déjà.`;
+    } else {
+      const { data: verb, error: insertErr } = await supabase
+        .from('verbs')
+        .insert({ infinitive, fr, group_num, is_irregular, notes })
+        .select().single();
+
+      if (insertErr) {
+        error = insertErr.message;
+      } else {
+        // Insérer les conjugaisons au présent
+        const conjugations = [];
+        const persons = ['eu', 'tu', 'el/ea', 'noi', 'voi', 'ei/ele'];
+        for (const person of persons) {
+          const form_val = form.get(`prez_${person.replace('/', '_')}`)?.toString().trim();
+          if (form_val) conjugations.push({ verb_id: verb.id, tense: 'prezent', person, form: form_val });
+        }
+        for (const person of persons) {
+          const form_val = form.get(`pc_${person.replace('/', '_')}`)?.toString().trim();
+          if (form_val) conjugations.push({ verb_id: verb.id, tense: 'perfect_compus', person, form: form_val });
+        }
+        for (const person of persons) {
+          const form_val = form.get(`viitor_${person.replace('/', '_')}`)?.toString().trim();
+          if (form_val) conjugations.push({ verb_id: verb.id, tense: 'viitor', person, form: form_val });
+        }
+        if (conjugations.length > 0) {
+          await supabase.from('verb_conjugations').insert(conjugations);
+        }
+        return Astro.redirect(`/verbs/${encodeURIComponent(infinitive.replace(/^a /, ''))}`);
+      }
+    }
+  }
+}
+
+const persons = ['eu', 'tu', 'el/ea', 'noi', 'voi', 'ei/ele'];
+---
+
+<Layout title="Nouveau verbe">
+  <div class="container page-new-verb">
+
+    <div class="new-header">
+      <a href="/verbs" class="back-link">← Verbes</a>
+      <h1 class="serif">Nouveau verbe</h1>
+    </div>
+
+    {error && <div class="error-banner">{error}</div>}
+
+    <form method="POST">
+
+      <!-- Infos de base -->
+      <div class="card form-card">
+        <div class="section-label">Informations</div>
+        <div class="form-row-base">
+          <div class="form-group" style="flex:1;">
+            <label class="form-label">Infinitif</label>
+            <input class="form-input" type="text" name="infinitive" placeholder="ex : a vorbi" required />
+          </div>
+          <div class="form-group" style="flex:1;">
+            <label class="form-label">Traduction</label>
+            <input class="form-input" type="text" name="fr" placeholder="ex : parler" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Groupe</label>
+            <select class="form-input" name="group_num" required>
+              <option value="">—</option>
+              <option value="1">I (-a)</option>
+              <option value="2">II (-ea)</option>
+              <option value="3">III (-e)</option>
+              <option value="4">IV (-i/-î)</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex;gap:16px;margin-top:12px;flex-wrap:wrap;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:14px;color:var(--text-muted);cursor:pointer;">
+            <input type="checkbox" name="is_irregular" style="accent-color:var(--gold);" />
+            Irrégulier
+          </label>
+        </div>
+        <div class="form-group" style="margin-top:12px;">
+          <label class="form-label">Notes (optionnel)</label>
+          <input class="form-input" type="text" name="notes" placeholder="ex : verbe réflexif" />
+        </div>
+      </div>
+
+      <!-- Présent -->
+      <div class="card form-card">
+        <div class="section-label">Présent — prezent</div>
+        <div class="conj-inputs">
+          {persons.map(person => (
+            <div class="conj-input-row">
+              <span class="conj-person-lbl">{person}</span>
+              <input
+                class="form-input"
+                type="text"
+                name={`prez_${person.replace('/', '_')}`}
+                placeholder={`forme pour ${person}`}
+                autocorrect="off" autocapitalize="off"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <!-- Passé composé -->
+      <div class="card form-card">
+        <div class="section-label">Passé composé — perfect compus</div>
+        <div class="conj-inputs">
+          {persons.map(person => (
+            <div class="conj-input-row">
+              <span class="conj-person-lbl">{person}</span>
+              <input
+                class="form-input"
+                type="text"
+                name={`pc_${person.replace('/', '_')}`}
+                placeholder={`ex : am vorbit`}
+                autocorrect="off" autocapitalize="off"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <!-- Futur -->
+      <div class="card form-card">
+        <div class="section-label">Futur — viitor</div>
+        <div class="conj-inputs">
+          {persons.map(person => (
+            <div class="conj-input-row">
+              <span class="conj-person-lbl">{person}</span>
+              <input
+                class="form-input"
+                type="text"
+                name={`viitor_${person.replace('/', '_')}`}
+                placeholder={`ex : o să vorbesc`}
+                autocorrect="off" autocapitalize="off"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <a href="/verbs" class="btn">Annuler</a>
+        <button type="submit" class="btn btn-primary">Enregistrer →</button>
+      </div>
+    </form>
+  </div>
+</Layout>
+
+<style>
+  .page-new-verb { padding-top: 28px; padding-bottom: 60px; max-width: 680px; }
+  .new-header { margin-bottom: 24px; }
+  .new-header h1 { font-size: 28px; margin: 8px 0 4px; }
+  .back-link { font-size: 13px; color: var(--text-faint); text-decoration: none; }
+
+  .error-banner {
+    padding: 12px 16px; border-radius: var(--radius-sm);
+    background: var(--red-dim); border: 0.5px solid var(--red-border);
+    color: var(--red-soft); font-size: 14px; margin-bottom: 20px;
+  }
+
+  .form-card { margin-bottom: 14px; }
+  .form-row-base { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+
+  .conj-inputs { display: flex; flex-direction: column; gap: 8px; }
+  .conj-input-row { display: grid; grid-template-columns: 70px 1fr; gap: 12px; align-items: center; }
+  .conj-person-lbl { font-size: 13px; color: var(--text-faint); }
+
+  .form-actions { display: flex; justify-content: flex-end; gap: 10px; padding-top: 4px; }
+
+  @media (max-width: 600px) {
+    .page-new-verb { padding-top: 20px; }
+    .form-row-base { flex-direction: column; }
+    .form-row-base > div { width: 100%; }
+    .form-actions { flex-direction: column; }
+    .form-actions .btn { width: 100%; justify-content: center; }
+  }
+</style>
