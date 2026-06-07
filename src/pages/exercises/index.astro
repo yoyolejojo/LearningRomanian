@@ -1,0 +1,162 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { supabase } from '../../lib/supabase.js';
+
+const { data: allWords } = await supabase.from('words').select('id, ro, fr').order('id');
+const shuffled = allWords ? [...allWords].sort(() => Math.random() - 0.5).slice(0, 8) : [];
+---
+
+<Layout title="Exercices">
+  <div class="container page-exercises">
+
+    <div class="exercises-header">
+      <h1 class="serif">Exercices</h1>
+      <p class="text-muted">Teste ton vocabulaire</p>
+    </div>
+
+    <div id="quiz-meta" class="quiz-meta">
+      <span class="section-label" style="margin-bottom:0;">Question <span id="q-current">1</span> / {shuffled.length}</span>
+      <div style="display:flex;gap:5px;" id="q-dots">
+        {shuffled.map((_, i) => (
+          <div class="q-dot" id={`dot-${i}`} style={i === 0 ? 'background:var(--gold)' : ''}></div>
+        ))}
+      </div>
+    </div>
+
+    <div id="questions">
+      {shuffled.map((word, qi) => {
+        const others = allWords?.filter(w => w.id !== word.id).sort(() => Math.random() - 0.5).slice(0, 3) ?? [];
+        const options = [...others.map(w => w.fr), word.fr].sort(() => Math.random() - 0.5);
+        return (
+          <div class="question-slide" id={`q-${qi}`} style={qi > 0 ? 'display:none;' : ''}>
+            <div class="card card-gold question-card">
+              <div class="section-label">Comment dit-on en français ?</div>
+              <div class="serif question-word">{word.ro}</div>
+            </div>
+            <div class="options-list">
+              {options.map(opt => (
+                <button
+                  class="option-btn"
+                  data-correct={opt === word.fr ? 'true' : 'false'}
+                  data-qi={qi}
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+
+    <div id="quiz-result" class="card card-gold quiz-result" style="display:none;">
+      <div id="score-emoji" style="font-size:48px;margin-bottom:12px;">🎉</div>
+      <div class="serif" style="font-size:26px;margin-bottom:8px;">Score : <span id="score-val">0</span> / {shuffled.length}</div>
+      <p class="text-muted" id="score-msg" style="margin-bottom:24px;"></p>
+      <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+        <button onclick="location.reload()" class="btn btn-primary">Recommencer</button>
+        <a href="/flashcards" class="btn">Flashcards</a>
+      </div>
+    </div>
+
+  </div>
+</Layout>
+
+<script define:vars={{ total: shuffled.length }}>
+  let current = 0;
+  let score = 0;
+
+  document.querySelectorAll('.option-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const qi = parseInt(this.dataset.qi);
+      const isCorrect = this.dataset.correct === 'true';
+      const slide = document.getElementById(`q-${qi}`);
+
+      slide.querySelectorAll('.option-btn').forEach(b => b.disabled = true);
+
+      if (isCorrect) {
+        this.classList.add('correct');
+        score++;
+      } else {
+        this.classList.add('wrong');
+        slide.querySelectorAll('.option-btn').forEach(b => {
+          if (b.dataset.correct === 'true') b.classList.add('correct');
+        });
+      }
+
+      setTimeout(() => {
+        current++;
+        if (current < total) {
+          slide.style.display = 'none';
+          document.getElementById(`q-${current}`).style.display = 'block';
+          document.getElementById('q-current').textContent = current + 1;
+          for (let i = 0; i < total; i++) {
+            const dot = document.getElementById(`dot-${i}`);
+            dot.style.background = i <= current ? 'var(--gold)' : 'rgba(255,255,255,0.1)';
+          }
+        } else {
+          document.getElementById('questions').style.display = 'none';
+          document.getElementById('quiz-meta').style.display = 'none';
+          const result = document.getElementById('quiz-result');
+          result.style.display = 'block';
+          document.getElementById('score-val').textContent = score;
+          const pct = score / total;
+          document.getElementById('score-emoji').textContent = pct >= 0.8 ? '🎉' : pct >= 0.5 ? '💪' : '📚';
+          document.getElementById('score-msg').textContent = pct >= 0.8
+            ? 'Excellent ! Tu maîtrises bien ce vocabulaire.'
+            : pct >= 0.5 ? 'Pas mal ! Continue les flashcards.'
+            : 'Continue, la répétition est la clé !';
+        }
+      }, 900);
+    });
+  });
+</script>
+
+<style>
+  .page-exercises { padding-top: 32px; padding-bottom: 40px; max-width: 600px; }
+  .exercises-header { margin-bottom: 24px; }
+  .exercises-header h1 { font-size: 28px; margin-bottom: 4px; }
+
+  .quiz-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .q-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.1);
+    transition: background 0.2s;
+  }
+
+  .question-card { padding: 28px 22px; margin-bottom: 14px; text-align: center; }
+  .question-word { font-size: 44px; }
+
+  .options-list { display: flex; flex-direction: column; gap: 8px; }
+  .option-btn {
+    width: 100%;
+    padding: 15px 18px;
+    text-align: left;
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    border: 0.5px solid var(--border);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .option-btn:hover:not(:disabled) { border-color: var(--border-hover); background: var(--bg-card-hover); }
+  .option-btn.correct { background: rgba(100,200,120,0.12); border-color: rgba(100,200,120,0.4); color: #7ecf8e; }
+  .option-btn.wrong { background: rgba(192,57,43,0.1); border-color: rgba(192,57,43,0.35); color: var(--red-soft); }
+
+  .quiz-result { text-align: center; padding: 48px 24px; }
+
+  @media (max-width: 600px) {
+    .page-exercises { padding-top: 20px; }
+    .question-word { font-size: 34px; }
+    .question-card { padding: 22px 16px; }
+    .option-btn { padding: 14px 16px; font-size: 14px; }
+  }
+</style>

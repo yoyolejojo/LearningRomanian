@@ -1,0 +1,199 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { supabase } from '../../lib/supabase.js';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const wordId = form.get('word_id');
+  const result = form.get('result');
+
+  if (wordId && result) {
+    const { data: word } = await supabase.from('words').select('srs_level').eq('id', wordId).single();
+    let newLevel = word?.srs_level ?? 0;
+    if (result === 'again') newLevel = Math.max(0, newLevel - 1);
+    else if (result === 'good') newLevel = Math.min(5, newLevel + 1);
+    else if (result === 'easy') newLevel = Math.min(5, newLevel + 2);
+
+    const daysMap = { 0:0, 1:1, 2:3, 3:7, 4:14, 5:30 };
+    const nextReview = new Date();
+    nextReview.setDate(nextReview.getDate() + (daysMap[newLevel] ?? 1));
+
+    await supabase.from('words').update({ srs_level: newLevel, srs_next_review: nextReview.toISOString() }).eq('id', wordId);
+    await supabase.from('review_sessions').insert({ word_id: wordId, result });
+
+    const today = new Date().toISOString().split('T')[0];
+    const { data: ds } = await supabase.from('daily_stats').select('*').eq('date', today).single();
+    if (ds) {
+      await supabase.from('daily_stats').update({ words_reviewed: (ds.words_reviewed||0)+1, xp: (ds.xp||0)+5 }).eq('date', today);
+    } else {
+      await supabase.from('daily_stats').insert({ date: today, words_reviewed: 1, xp: 5 });
+    }
+  }
+  return Astro.redirect('/flashcards');
+}
+
+const now = new Date().toISOString();
+const { data: dueWords } = await supabase
+  .from('words').select('*, lessons(number, title_ro)')
+  .lte('srs_next_review', now).order('srs_next_review', { ascending: true }).limit(20);
+
+const currentWord = dueWords?.[0] ?? null;
+const remaining = dueWords?.length ?? 0;
+
+const { data: allWords } = await supabase.from('words').select('srs_level');
+const mastered = allWords?.filter(w => w.srs_level >= 3).length ?? 0;
+const learning = allWords?.filter(w => w.srs_level > 0 && w.srs_level < 3).length ?? 0;
+const newW = allWords?.filter(w => w.srs_level === 0).length ?? 0;
+---
+
+<Layout title="Flashcards">
+  <div class="container page-flash">
+
+    <div class="flash-header">
+      <h1 class="serif">Flashcards</h1>
+      <div class="flash-stats">
+        <span class="badge badge-muted">{newW} new</span>
+        <span class="badge badge-gold">{learning} cours</span>
+        <span class="badge badge-success">{mastered} ✓</span>
+      </div>
+    </div>
+
+    {remaining === 0 ? (
+      <div class="flash-empty card card-gold">
+        <div class="serif" style="font-size:48px;margin-bottom:10px;">🎉</div>
+        <div class="serif" style="font-size:22px;margin-bottom:8px;">C'est tout pour aujourd'hui !</div>
+        <p class="text-muted" style="margin-bottom:24px;">Reviens demain pour continuer.</p>
+        <a href="/" class="btn btn-primary" style="width:100%;justify-content:center;">Retour à l'accueil</a>
+      </div>
+    ) : (
+      <div class="flash-wrapper">
+        <div class="flash-progress-row">
+          <span class="text-faint" style="font-size:13px;">{remaining} carte{remaining > 1 ? 's' : ''} restante{remaining > 1 ? 's' : ''}</span>
+        </div>
+
+        <div id="flashcard" class="card card-gold flash-card" onclick="revealCard()">
+          <div class="flash-card-inner">
+            <div class="section-label">Comment dit-on…</div>
+            <div class="serif flash-word">{currentWord?.ro}</div>
+            <div id="answer" class="flash-answer" style="display:none;">
+              <div class="flash-translation">{currentWord?.fr}</div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
+                {currentWord?.type && <span class="badge badge-muted">{currentWord.type}</span>}
+                {currentWord?.gender && <span class="badge badge-gold">{currentWord.gender}</span>}
+              </div>
+              {currentWord?.example_ro && (
+                <div class="flash-example">
+                  <div style="font-size:14px;font-style:italic;color:var(--text-muted);">"{currentWord.example_ro}"</div>
+                  <div style="font-size:13px;color:var(--text-faint);margin-top:4px;">— {currentWord.example_fr}</div>
+                </div>
+              )}
+            </div>
+          </div>
+          <div class="flash-hint" id="flash-hint">Appuie pour révéler</div>
+        </div>
+
+        <div id="action-buttons" class="flash-buttons" style="display:none;">
+          <form method="POST">
+            <input type="hidden" name="word_id" value={currentWord?.id} />
+            <div class="flash-actions">
+              <button type="submit" name="result" value="again" class="btn flash-btn-again">À revoir</button>
+              <button type="submit" name="result" value="good" class="btn btn-primary flash-btn-good">Bien ✓</button>
+              <button type="submit" name="result" value="easy" class="btn flash-btn-easy">Facile ✓✓</button>
+            </div>
+          </form>
+        </div>
+
+        {currentWord?.lessons && (
+          <div style="text-align:center;font-size:12px;color:var(--text-faint);margin-top:10px;">
+            Leçon #{currentWord.lessons.number} — {currentWord.lessons.title_ro}
+          </div>
+        )}
+      </div>
+    )}
+  </div>
+</Layout>
+
+<script>
+  function revealCard() {
+    const answer = document.getElementById('answer');
+    const hint = document.getElementById('flash-hint');
+    const buttons = document.getElementById('action-buttons');
+    if (answer?.style.display === 'none') {
+      answer.style.display = 'block';
+      if (hint) hint.style.display = 'none';
+      if (buttons) buttons.style.display = 'block';
+    }
+  }
+  window.revealCard = revealCard;
+</script>
+
+<style>
+  .page-flash { padding-top: 32px; padding-bottom: 40px; max-width: 560px; }
+
+  .flash-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .flash-header h1 { font-size: 28px; }
+  .flash-stats { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  .flash-empty {
+    text-align: center;
+    padding: 48px 24px;
+  }
+
+  .flash-progress-row { margin-bottom: 12px; }
+
+  .flash-card {
+    cursor: pointer;
+    min-height: 240px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 28px 24px 20px;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .flash-card-inner { flex: 1; }
+  .flash-word { font-size: 48px; line-height: 1.1; margin-bottom: 10px; }
+  .flash-translation { font-size: 22px; font-style: italic; color: var(--text-muted); }
+  .flash-answer { margin-top: 16px; }
+  .flash-example {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 0.5px solid rgba(232,184,75,0.15);
+  }
+  .flash-hint {
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-faint);
+    margin-top: 16px;
+  }
+
+  .flash-buttons { margin-top: 12px; }
+  .flash-actions {
+    display: grid;
+    grid-template-columns: 1fr 1.4fr 1fr;
+    gap: 8px;
+  }
+  .flash-actions button { justify-content: center; }
+  .flash-btn-again { border-color: rgba(192,57,43,0.3); color: var(--red-soft); }
+  .flash-btn-again:hover { background: var(--red-dim); }
+  .flash-btn-easy { border-color: rgba(100,200,120,0.3); color: #7ecf8e; }
+  .flash-btn-easy:hover { background: rgba(100,200,120,0.08); }
+
+  @media (max-width: 600px) {
+    .page-flash { padding-top: 20px; }
+    .flash-word { font-size: 38px; }
+    .flash-card { min-height: 200px; padding: 22px 18px 16px; }
+    .flash-translation { font-size: 18px; }
+    /* Boutons full width empilés sur très petit écran */
+    @media (max-width: 380px) {
+      .flash-actions { grid-template-columns: 1fr; }
+    }
+  }
+</style>

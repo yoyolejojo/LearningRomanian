@@ -1,0 +1,205 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { supabase } from '../lib/supabase.js';
+
+const { data: lessons } = await supabase.from('lessons').select('id, completed');
+const { data: words } = await supabase.from('words').select('id, srs_level');
+const { data: stats } = await supabase.from('daily_stats').select('*').order('date', { ascending: false }).limit(7);
+
+const completedLessons = lessons?.filter(l => l.completed).length ?? 0;
+const totalLessons = lessons?.length ?? 0;
+const masteredWords = words?.filter(w => w.srs_level >= 3).length ?? 0;
+const totalWords = words?.length ?? 0;
+const progressPct = totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0;
+
+const streak = stats?.reduce((acc, s, i) => {
+  if (i === 0 && (s.words_reviewed > 0 || s.lessons_done > 0)) return 1;
+  const prev = stats[i - 1];
+  const diff = (new Date(prev?.date) - new Date(s.date)) / 86400000;
+  return diff === 1 && (s.words_reviewed > 0 || s.lessons_done > 0) ? acc + 1 : acc;
+}, 0) ?? 0;
+
+const { data: nextLesson } = await supabase
+  .from('lessons').select('*').eq('completed', false)
+  .order('number', { ascending: true }).limit(1).single();
+
+const { data: wordOfDay } = await supabase.from('words').select('*').eq('srs_level', 0).limit(20);
+const randomWord = wordOfDay?.length > 0
+  ? wordOfDay[Math.floor(new Date().getDate() % wordOfDay.length)]
+  : null;
+
+const { data: recentLessons } = await supabase
+  .from('lessons').select('*').order('number', { ascending: true }).limit(6);
+---
+
+<Layout title="Accueil">
+  <div class="container page-home">
+
+    <div class="home-header">
+      <h1 class="serif">Bună ziua ! 👋</h1>
+      <p class="text-muted">Continue ton apprentissage — chaque jour compte.</p>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-grid">
+      <div class="card stat-card">
+        <div class="serif text-gold stat-num">{completedLessons}</div>
+        <div class="text-faint stat-lbl">leçons</div>
+      </div>
+      <div class="card stat-card">
+        <div class="serif text-gold stat-num">{masteredWords}</div>
+        <div class="text-faint stat-lbl">maîtrisés</div>
+      </div>
+      <div class="card stat-card">
+        <div class="serif text-gold stat-num">{totalWords}</div>
+        <div class="text-faint stat-lbl">mots</div>
+      </div>
+      <div class="card stat-card">
+        <div class="serif text-gold stat-num">{streak}</div>
+        <div class="text-faint stat-lbl">🔥 streak</div>
+      </div>
+    </div>
+
+    <!-- Progression -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="progress-header">
+        <div class="section-label" style="margin-bottom:0;">Progression Assimil</div>
+        <span class="text-faint" style="font-size:13px;">{completedLessons} / {totalLessons}</span>
+      </div>
+      <div class="progress-track" style="margin-top:10px;">
+        <div class="progress-fill" style={`width:${progressPct}%`}></div>
+      </div>
+      <div class="text-faint" style="font-size:12px;margin-top:6px;">{progressPct}% complété</div>
+    </div>
+
+    <!-- Mot du jour + Prochaine leçon -->
+    <div class="home-duo">
+      {randomWord && (
+        <div class="card card-gold">
+          <div class="section-label">Mot du jour</div>
+          <div class="serif word-big">{randomWord.ro}</div>
+          <div class="text-muted" style="font-size:16px;font-style:italic;">{randomWord.fr}</div>
+          <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;">
+            {randomWord.type && <span class="badge badge-gold">{randomWord.type}</span>}
+            {randomWord.gender && <span class="badge badge-muted">{randomWord.gender}</span>}
+          </div>
+          {randomWord.example_ro && (
+            <div class="example-block">
+              <div style="font-size:14px;color:var(--text-muted);font-style:italic;">"{randomWord.example_ro}"</div>
+              <div style="font-size:13px;color:var(--text-faint);margin-top:4px;">— {randomWord.example_fr}</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {nextLesson && (
+        <div class="card">
+          <div class="section-label">Prochaine leçon</div>
+          <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:6px;flex-wrap:wrap;">
+            <span class="serif text-gold" style="font-size:26px;">#{nextLesson.number}</span>
+            <span class="serif" style="font-size:18px;">{nextLesson.title_ro}</span>
+          </div>
+          <div class="text-muted" style="font-size:14px;font-style:italic;margin-bottom:16px;">{nextLesson.title_fr}</div>
+          <a href={`/lessons/${nextLesson.number}`} class="btn btn-primary" style="width:100%;justify-content:center;">
+            Commencer →
+          </a>
+        </div>
+      )}
+    </div>
+
+    <!-- Leçons récentes -->
+    <div class="card">
+      <div class="section-label">Leçons récentes</div>
+      <div class="lessons-list">
+        {recentLessons?.map(lesson => (
+          <a href={`/lessons/${lesson.number}`} class="lesson-row">
+            <span class="lesson-dot" style={lesson.completed ? 'background:var(--gold)' : ''}></span>
+            <span class="lesson-title">{lesson.title_ro}</span>
+            <span class="lesson-sub">{lesson.title_fr}</span>
+            <span class="lesson-num">
+              {lesson.completed ? <span class="badge badge-success">✓</span> : `#${lesson.number}`}
+            </span>
+          </a>
+        ))}
+      </div>
+      <div style="margin-top:12px;">
+        <a href="/lessons" class="btn btn-ghost" style="font-size:13px;">Voir toutes →</a>
+      </div>
+    </div>
+
+  </div>
+</Layout>
+
+<style>
+  .page-home { padding-top: 32px; padding-bottom: 40px; }
+
+  .home-header { margin-bottom: 28px; }
+  .home-header h1 { font-size: 32px; line-height: 1.1; margin-bottom: 6px; }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .stat-card { text-align: center; padding: 16px 10px; }
+  .stat-num { font-size: 30px; line-height: 1; }
+  .stat-lbl { font-size: 11px; margin-top: 4px; }
+
+  .progress-header { display: flex; justify-content: space-between; align-items: center; }
+
+  .home-duo {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+    margin-top: 16px;
+  }
+  .card-gold {
+    background: rgba(232,184,75,0.06);
+    border-color: rgba(232,184,75,0.2);
+  }
+  .word-big { font-size: 38px; line-height: 1; margin-bottom: 6px; }
+  .example-block {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 0.5px solid rgba(232,184,75,0.15);
+  }
+
+  .lessons-list { display: flex; flex-direction: column; gap: 6px; }
+  .lesson-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 11px 13px;
+    border-radius: 10px;
+    background: var(--bg-card);
+    border: 0.5px solid var(--border);
+    text-decoration: none;
+    transition: border-color 0.2s;
+  }
+  .lesson-row:hover { border-color: var(--border-hover); }
+  .lesson-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.15);
+    flex-shrink: 0;
+  }
+  .lesson-title { flex: 1; font-size: 14px; color: var(--text); }
+  .lesson-sub { font-size: 13px; font-style: italic; color: var(--text-muted); }
+  .lesson-num { font-size: 12px; color: var(--text-faint); min-width: 28px; text-align: right; }
+
+  @media (max-width: 600px) {
+    .page-home { padding-top: 24px; }
+    .home-header h1 { font-size: 26px; }
+    .stats-grid { grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .stat-card { padding: 12px 6px; }
+    .stat-num { font-size: 24px; }
+    .stat-lbl { font-size: 10px; }
+    .home-duo { grid-template-columns: 1fr; }
+    .word-big { font-size: 30px; }
+    /* Sur mobile, cacher le titre français dans la liste */
+    .lesson-sub { display: none; }
+    .lesson-title { font-size: 14px; }
+  }
+</style>

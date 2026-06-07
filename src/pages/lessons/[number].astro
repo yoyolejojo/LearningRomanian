@@ -1,0 +1,189 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { supabase } from '../../lib/supabase.js';
+
+const { number } = Astro.params;
+const lessonNum = parseInt(number);
+
+const { data: lesson } = await supabase.from('lessons').select('*').eq('number', lessonNum).single();
+if (!lesson) return Astro.redirect('/lessons');
+
+const { data: words } = await supabase.from('words').select('*').eq('lesson_id', lesson.id).order('id');
+const { data: prevLesson } = await supabase.from('lessons').select('number,title_ro').eq('number', lessonNum - 1).single();
+const { data: nextLesson } = await supabase.from('lessons').select('number,title_ro').eq('number', lessonNum + 1).single();
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  if (form.get('action') === 'complete') {
+    await supabase.from('lessons').update({ completed: true, completed_at: new Date().toISOString() }).eq('id', lesson.id);
+    const today = new Date().toISOString().split('T')[0];
+    const { data: ds } = await supabase.from('daily_stats').select('*').eq('date', today).single();
+    if (ds) {
+      await supabase.from('daily_stats').update({ lessons_done: (ds.lessons_done||0)+1, xp: (ds.xp||0)+20 }).eq('date', today);
+    } else {
+      await supabase.from('daily_stats').insert({ date: today, lessons_done: 1, xp: 20 });
+    }
+    return Astro.redirect(`/lessons/${lessonNum}`);
+  }
+}
+
+const dialogue = lesson.dialogue || [];
+const grammar = lesson.grammar || '';
+---
+
+<Layout title={lesson.title_ro}>
+  <div class="container page-lesson">
+
+    <div class="lesson-breadcrumb">
+      <a href="/lessons">← Leçons</a>
+      <span>Leçon {lesson.number}</span>
+    </div>
+
+    <div class="lesson-header">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
+        <span class="serif text-gold" style="font-size:16px;">#{lesson.number < 10 ? '0'+lesson.number : lesson.number}</span>
+        {lesson.completed && <span class="badge badge-success">Complétée ✓</span>}
+      </div>
+      <h1 class="serif lesson-title">{lesson.title_ro}</h1>
+      <p class="text-muted" style="font-size:17px;font-style:italic;">{lesson.title_fr}</p>
+    </div>
+
+    {dialogue.length > 0 && (
+      <section class="lesson-section">
+        <div class="section-label">Dialogue</div>
+        <div class="dialogue-table">
+          {dialogue.map((line, i) => (
+            <div class={`dialogue-row ${i % 2 === 0 ? 'even' : ''}`}>
+              <div class="dialogue-ro">{line.ro}</div>
+              <div class="dialogue-fr">{line.fr}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+    )}
+
+    {grammar && (
+      <section class="lesson-section">
+        <div class="section-label">Grammaire</div>
+        <div class="card card-gold grammar-block">
+          <p set:html={grammar
+            .replace(/\*\*(.*?)\*\*/g, '<strong style="color:var(--text)">$1</strong>')
+            .replace(/\*(.*?)\*/g, '<em>$1</em>')}
+          ></p>
+        </div>
+      </section>
+    )}
+
+    {words && words.length > 0 && (
+      <section class="lesson-section">
+        <div class="section-label">Vocabulaire ({words.length} mots)</div>
+        <div class="words-grid">
+          {words.map(word => (
+            <div class="word-card card">
+              <div class="word-ro">{word.ro}</div>
+              <div class="word-fr">{word.fr}</div>
+              <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:8px;">
+                {word.type && <span class="badge badge-muted">{word.type}</span>}
+                {word.gender && <span class="badge badge-gold">{word.gender}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    )}
+
+    <div class="lesson-actions">
+      <div class="lesson-nav">
+        {prevLesson && <a href={`/lessons/${prevLesson.number}`} class="btn">← #{prevLesson.number}</a>}
+        {nextLesson && <a href={`/lessons/${nextLesson.number}`} class="btn">#{nextLesson.number} →</a>}
+      </div>
+      {!lesson.completed && (
+        <form method="POST">
+          <input type="hidden" name="action" value="complete" />
+          <button type="submit" class="btn btn-primary complete-btn">Leçon terminée ✓</button>
+        </form>
+      )}
+    </div>
+
+  </div>
+</Layout>
+
+<style>
+  .page-lesson { padding-top: 28px; padding-bottom: 48px; max-width: 780px; }
+
+  .lesson-breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-faint);
+    margin-bottom: 22px;
+  }
+  .lesson-breadcrumb a { color: var(--text-faint); text-decoration: none; }
+  .lesson-breadcrumb a:hover { color: var(--text-muted); }
+
+  .lesson-header { margin-bottom: 28px; }
+  .lesson-title { font-size: 34px; line-height: 1.1; margin-bottom: 6px; }
+  .lesson-section { margin-bottom: 28px; }
+
+  /* Dialogue */
+  .dialogue-table {
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .dialogue-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    padding: 13px 16px;
+    border-top: 0.5px solid var(--border);
+  }
+  .dialogue-row:first-child { border-top: none; }
+  .dialogue-row.even { background: rgba(255,255,255,0.025); }
+  .dialogue-ro { font-size: 15px; padding-right: 14px; }
+  .dialogue-fr { font-size: 14px; font-style: italic; color: var(--text-muted); border-left: 0.5px solid var(--border); padding-left: 14px; }
+
+  /* Grammar */
+  .card-gold { background: rgba(232,184,75,0.05); border-color: rgba(232,184,75,0.18); }
+  .grammar-block p { font-size: 14px; line-height: 1.85; color: var(--text-muted); }
+
+  /* Words */
+  .words-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 8px;
+  }
+  .word-card { padding: 13px 15px; }
+  .word-ro { font-size: 15px; font-weight: 500; }
+  .word-fr { font-size: 13px; font-style: italic; color: var(--text-muted); margin-top: 2px; }
+
+  /* Actions */
+  .lesson-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 20px;
+    border-top: 0.5px solid var(--border);
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .lesson-nav { display: flex; gap: 8px; }
+  .complete-btn { padding: 10px 22px; }
+
+  @media (max-width: 600px) {
+    .page-lesson { padding-top: 20px; }
+    .lesson-title { font-size: 26px; }
+
+    /* Dialogue empilé sur mobile */
+    .dialogue-row { grid-template-columns: 1fr; gap: 6px; padding: 12px 14px; }
+    .dialogue-fr { border-left: none; padding-left: 0; border-top: 0.5px solid rgba(255,255,255,0.06); padding-top: 6px; }
+
+    .words-grid { grid-template-columns: 1fr 1fr; }
+    .word-card { padding: 11px 12px; }
+
+    .lesson-actions { flex-direction: column-reverse; align-items: stretch; }
+    .lesson-nav { justify-content: space-between; }
+    .complete-btn { width: 100%; justify-content: center; }
+  }
+</style>

@@ -1,0 +1,328 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { supabase } from '../../lib/supabase.js';
+
+let error = null;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const number   = parseInt(form.get('number'));
+  const title_ro = form.get('title_ro')?.toString().trim();
+  const title_fr = form.get('title_fr')?.toString().trim();
+  const grammar  = form.get('grammar')?.toString().trim();
+
+  const dialogue = [];
+  let i = 1;
+  while (form.get(`line_ro_${i}`)) {
+    const ro = form.get(`line_ro_${i}`)?.toString().trim();
+    const fr = form.get(`line_fr_${i}`)?.toString().trim();
+    if (ro && fr) dialogue.push({ ro, fr });
+    i++;
+  }
+
+  const words = [];
+  let w = 1;
+  while (form.get(`word_ro_${w}`)) {
+    const ro     = form.get(`word_ro_${w}`)?.toString().trim();
+    const fr     = form.get(`word_fr_${w}`)?.toString().trim();
+    const type   = form.get(`word_type_${w}`)?.toString().trim();
+    const gender = form.get(`word_gender_${w}`)?.toString().trim();
+    if (ro && fr) words.push({ ro, fr, type: type || null, gender: gender || null });
+    w++;
+  }
+
+  if (!number || !title_ro || !title_fr) {
+    error = 'Le numéro et les titres sont obligatoires.';
+  } else {
+    const { data: existing } = await supabase.from('lessons').select('id').eq('number', number).single();
+    if (existing) {
+      error = `La leçon #${number} existe déjà.`;
+    } else {
+      const { data: lesson, error: insertErr } = await supabase
+        .from('lessons')
+        .insert({ number, title_ro, title_fr, dialogue, grammar: grammar || null })
+        .select().single();
+
+      if (insertErr) {
+        error = insertErr.message;
+      } else {
+        if (words.length > 0) {
+          await supabase.from('words').insert(words.map(w => ({ ...w, lesson_id: lesson.id })));
+        }
+        return Astro.redirect(`/lessons/${number}`);
+      }
+    }
+  }
+}
+
+const { data: lastLesson } = await supabase
+  .from('lessons').select('number').order('number', { ascending: false }).limit(1).single();
+const suggestedNumber = (lastLesson?.number ?? 0) + 1;
+---
+
+<Layout title="Nouvelle leçon">
+  <div class="container page-new">
+
+    <div class="new-header">
+      <a href="/lessons" class="back-link">← Leçons</a>
+      <h1 class="serif">Nouvelle leçon</h1>
+      <p class="text-muted">Structure Assimil</p>
+    </div>
+
+    {error && (
+      <div class="error-banner">{error}</div>
+    )}
+
+    <form method="POST" id="lesson-form">
+
+      <!-- Infos de base -->
+      <div class="card form-card">
+        <div class="section-label">Informations</div>
+        <div class="form-row-base">
+          <div class="form-group">
+            <label class="form-label">N°</label>
+            <input class="form-input" type="number" name="number" value={suggestedNumber} min="1" max="100" required />
+          </div>
+          <div class="form-group" style="flex:1;">
+            <label class="form-label">Titre roumain</label>
+            <input class="form-input" type="text" name="title_ro" placeholder="ex : Bună ziua!" required />
+          </div>
+          <div class="form-group" style="flex:1;">
+            <label class="form-label">Titre français</label>
+            <input class="form-input" type="text" name="title_fr" placeholder="ex : Bonjour !" required />
+          </div>
+        </div>
+      </div>
+
+      <!-- Dialogue -->
+      <div class="card form-card">
+        <div class="form-section-header">
+          <div class="section-label" style="margin-bottom:0;">Dialogue</div>
+          <button type="button" id="add-line" class="btn" style="padding:5px 12px;font-size:12px;">+ Ligne</button>
+        </div>
+        <div class="dialogue-cols-header">
+          <span class="form-label">Roumain</span>
+          <span class="form-label">Français</span>
+        </div>
+        <div id="dialogue-lines" class="form-lines">
+          {[1,2,3,4].map(i => (
+            <div class="dialogue-line">
+              <input class="form-input" type="text" name={`line_ro_${i}`} placeholder="— text en roumain" />
+              <input class="form-input" type="text" name={`line_fr_${i}`} placeholder="— traduction" />
+              <button type="button" class="remove-btn remove-line">×</button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <!-- Grammaire -->
+      <div class="card form-card">
+        <div class="section-label">Notes de grammaire</div>
+        <textarea class="form-input" name="grammar" rows="4" placeholder="ex : **A fi** = être. *Eu sunt* (je suis)..."></textarea>
+        <span style="font-size:11px;color:var(--text-faint);margin-top:4px;display:block;">**gras** et *italique* supportés</span>
+      </div>
+
+      <!-- Vocabulaire -->
+      <div class="card form-card">
+        <div class="form-section-header">
+          <div class="section-label" style="margin-bottom:0;">Vocabulaire</div>
+          <button type="button" id="add-word" class="btn" style="padding:5px 12px;font-size:12px;">+ Mot</button>
+        </div>
+        <div id="word-lines" class="form-lines">
+          {[1,2,3,4,5].map(i => (
+            <div class="word-line">
+              <input class="form-input" type="text" name={`word_ro_${i}`} placeholder="cuvânt" />
+              <input class="form-input" type="text" name={`word_fr_${i}`} placeholder="mot" />
+              <select class="form-input form-select-sm" name={`word_type_${i}`}>
+                <option value="">type</option>
+                <option>substantiv</option><option>verb</option><option>adjectiv</option>
+                <option>adverb</option><option>expresie</option><option>prepoziție</option><option>pronume</option>
+              </select>
+              <select class="form-input form-select-xs" name={`word_gender_${i}`}>
+                <option value="">gen</option>
+                <option value="m">m.</option><option value="f">f.</option><option value="n">n.</option>
+              </select>
+              <button type="button" class="remove-btn remove-word">×</button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <a href="/lessons" class="btn">Annuler</a>
+        <button type="submit" class="btn btn-primary">Enregistrer →</button>
+      </div>
+    </form>
+  </div>
+</Layout>
+
+<script>
+  let lineCount = 4;
+  let wordCount = 5;
+
+  function makeDialogueLine(n) {
+    const div = document.createElement('div');
+    div.className = 'dialogue-line';
+    div.innerHTML = `
+      <input class="form-input" type="text" name="line_ro_${n}" placeholder="— text en roumain" />
+      <input class="form-input" type="text" name="line_fr_${n}" placeholder="— traduction" />
+      <button type="button" class="remove-btn remove-line">×</button>
+    `;
+    return div;
+  }
+
+  function makeWordLine(n) {
+    const div = document.createElement('div');
+    div.className = 'word-line';
+    div.innerHTML = `
+      <input class="form-input" type="text" name="word_ro_${n}" placeholder="cuvânt" />
+      <input class="form-input" type="text" name="word_fr_${n}" placeholder="mot" />
+      <select class="form-input form-select-sm" name="word_type_${n}">
+        <option value="">type</option>
+        <option>substantiv</option><option>verb</option><option>adjectiv</option>
+        <option>adverb</option><option>expresie</option><option>prepoziție</option><option>pronume</option>
+      </select>
+      <select class="form-input form-select-xs" name="word_gender_${n}">
+        <option value="">gen</option>
+        <option value="m">m.</option><option value="f">f.</option><option value="n">n.</option>
+      </select>
+      <button type="button" class="remove-btn remove-word">×</button>
+    `;
+    return div;
+  }
+
+  document.getElementById('add-line').addEventListener('click', () => {
+    lineCount++;
+    const el = makeDialogueLine(lineCount);
+    document.getElementById('dialogue-lines').appendChild(el);
+    el.querySelector('input').focus();
+    bindRemove();
+  });
+
+  document.getElementById('add-word').addEventListener('click', () => {
+    wordCount++;
+    const el = makeWordLine(wordCount);
+    document.getElementById('word-lines').appendChild(el);
+    el.querySelector('input').focus();
+    bindRemove();
+  });
+
+  function bindRemove() {
+    document.querySelectorAll('.remove-line').forEach(btn => {
+      btn.onclick = () => btn.closest('.dialogue-line').remove();
+    });
+    document.querySelectorAll('.remove-word').forEach(btn => {
+      btn.onclick = () => btn.closest('.word-line').remove();
+    });
+  }
+  bindRemove();
+</script>
+
+<style>
+  .page-new { padding-top: 28px; padding-bottom: 60px; max-width: 740px; }
+
+  .new-header { margin-bottom: 24px; }
+  .new-header h1 { font-size: 28px; margin: 8px 0 4px; }
+  .back-link { font-size: 13px; color: var(--text-faint); text-decoration: none; }
+
+  .error-banner {
+    padding: 12px 16px;
+    border-radius: var(--radius-sm);
+    background: var(--red-dim);
+    border: 0.5px solid var(--red-border);
+    color: var(--red-soft);
+    font-size: 14px;
+    margin-bottom: 20px;
+  }
+
+  .form-card { margin-bottom: 14px; }
+  .form-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+
+  .form-row-base {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .form-row-base .form-group:first-child { width: 70px; flex-shrink: 0; }
+
+  .dialogue-cols-header {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 6px;
+    padding-right: 36px;
+  }
+
+  .form-lines { display: flex; flex-direction: column; gap: 8px; }
+
+  .dialogue-line {
+    display: grid;
+    grid-template-columns: 1fr 1fr 28px;
+    gap: 8px;
+    align-items: center;
+  }
+  .word-line {
+    display: grid;
+    grid-template-columns: 1fr 1fr 90px 52px 28px;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .remove-btn {
+    background: none;
+    border: none;
+    color: var(--text-faint);
+    cursor: pointer;
+    font-size: 18px;
+    padding: 2px 4px;
+    border-radius: 4px;
+    line-height: 1;
+    transition: color 0.15s;
+  }
+  .remove-btn:hover { color: var(--red-soft); }
+
+  .form-select-sm { font-size: 13px; padding: 10px 8px; }
+  .form-select-xs { font-size: 13px; padding: 10px 6px; }
+
+  .form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding-top: 4px;
+  }
+
+  /* Mobile : tout en colonne */
+  @media (max-width: 600px) {
+    .page-new { padding-top: 20px; }
+
+    .form-row-base { flex-direction: column; }
+    .form-row-base .form-group:first-child { width: 100%; }
+
+    .dialogue-cols-header { display: none; }
+    .dialogue-line {
+      grid-template-columns: 1fr 28px;
+      grid-template-rows: auto auto;
+    }
+    .dialogue-line input:first-child { grid-column: 1; grid-row: 1; }
+    .dialogue-line input:nth-child(2) { grid-column: 1; grid-row: 2; }
+    .dialogue-line .remove-btn { grid-column: 2; grid-row: 1 / 3; align-self: center; }
+
+    .word-line {
+      grid-template-columns: 1fr 1fr 28px;
+      grid-template-rows: auto auto;
+    }
+    .word-line input:first-child { grid-column: 1; grid-row: 1; }
+    .word-line input:nth-child(2) { grid-column: 2; grid-row: 1; }
+    .word-line select:nth-child(3) { grid-column: 1; grid-row: 2; }
+    .word-line select:nth-child(4) { grid-column: 2; grid-row: 2; }
+    .word-line .remove-btn { grid-column: 3; grid-row: 1 / 3; align-self: center; }
+
+    .form-actions { flex-direction: column; }
+    .form-actions .btn { width: 100%; justify-content: center; }
+  }
+</style>

@@ -1,0 +1,15 @@
+{
+  "name": "romana-cu-drag",
+  "type": "module",
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "astro": "^4.11.0",
+    "@astrojs/netlify": "^5.3.0",
+    "@supabase/supabase-js": "^2.43.4"
+  }
+}

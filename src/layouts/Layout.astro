@@ -1,0 +1,188 @@
+---
+import '../styles/global.css';
+const { title = 'română cu drag' } = Astro.props;
+const currentPath = Astro.url.pathname;
+---
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{title} · română cu drag</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+</head>
+<body>
+  <nav class="main-nav">
+    <a href="/" class="nav-logo">
+      <span class="nav-flag" aria-hidden="true">
+        <span style="background:#2563a8"></span>
+        <span style="background:#e8b84b"></span>
+        <span style="background:#c0392b"></span>
+      </span>
+      română<em>cu drag</em>
+    </a>
+
+    <!-- Hamburger (mobile only) -->
+    <button class="nav-burger" id="nav-burger" aria-label="Menu" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+
+    <!-- Links — desktop inline, mobile dropdown -->
+    <ul class="nav-links" id="nav-links">
+      <li><a href="/" class={currentPath === '/' ? 'active' : ''}>Accueil</a></li>
+      <li><a href="/lessons" class={currentPath.startsWith('/lessons') && currentPath !== '/lessons/new' ? 'active' : ''}>Leçons</a></li>
+      <li><a href="/vocabulary" class={currentPath.startsWith('/vocabulary') ? 'active' : ''}>Vocabulaire</a></li>
+      <li><a href="/flashcards" class={currentPath.startsWith('/flashcards') ? 'active' : ''}>Flashcards</a></li>
+      <li><a href="/exercises" class={currentPath.startsWith('/exercises') ? 'active' : ''}>Exercices</a></li>
+      <li>
+        <a href="/lessons/new"
+           class={currentPath === '/lessons/new' ? 'active nav-add' : 'nav-add'}>
+          + Leçon
+        </a>
+      </li>
+    </ul>
+  </nav>
+
+  <main>
+    <slot />
+  </main>
+
+  <!-- Bottom nav (mobile only) -->
+  <nav class="bottom-nav" aria-label="Navigation principale">
+    <a href="/" class={currentPath === '/' ? 'active' : ''}>
+      <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3 12L12 3l9 9M4.5 10.5V19a1 1 0 001 1h4v-5h5v5h4a1 1 0 001-1v-8.5"/></svg>
+      <span>Accueil</span>
+    </a>
+    <a href="/lessons" class={currentPath.startsWith('/lessons') && currentPath !== '/lessons/new' ? 'active' : ''}>
+      <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/></svg>
+      <span>Leçons</span>
+    </a>
+    <a href="/lessons/new" class={currentPath === '/lessons/new' ? 'active bottom-nav-add' : 'bottom-nav-add'}>
+      <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
+      <span>Ajouter</span>
+    </a>
+    <a href="/flashcards" class={currentPath.startsWith('/flashcards') ? 'active' : ''}>
+      <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M16 2H8M12 2v4"/></svg>
+      <span>Cartes</span>
+    </a>
+    <a href="/exercises" class={currentPath.startsWith('/exercises') ? 'active' : ''}>
+      <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      <span>Exercices</span>
+    </a>
+  </nav>
+</body>
+</html>
+
+<script>
+  const burger = document.getElementById('nav-burger');
+  const links = document.getElementById('nav-links');
+  burger?.addEventListener('click', () => {
+    const open = links?.classList.toggle('open');
+    burger.setAttribute('aria-expanded', String(open));
+  });
+  // Close on link click
+  links?.querySelectorAll('a').forEach(a => {
+    a.addEventListener('click', () => links.classList.remove('open'));
+  });
+</script>
+
+<style>
+  .nav-flag {
+    display: inline-flex;
+    gap: 1.5px;
+    margin-right: 8px;
+    vertical-align: middle;
+    flex-shrink: 0;
+  }
+  .nav-flag span {
+    display: inline-block;
+    width: 5px;
+    height: 16px;
+    border-radius: 1px;
+  }
+  .nav-add {
+    color: var(--gold) !important;
+    border: 0.5px solid var(--gold-border);
+    padding: 4px 12px;
+    border-radius: var(--radius-pill);
+  }
+  .nav-add:hover { background: var(--gold-dim); }
+
+  /* Hamburger */
+  .nav-burger {
+    display: none;
+    flex-direction: column;
+    gap: 5px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 6px;
+  }
+  .nav-burger span {
+    display: block;
+    width: 22px;
+    height: 1.5px;
+    background: var(--text-muted);
+    border-radius: 2px;
+    transition: all 0.2s;
+  }
+
+  /* Bottom nav (hidden on desktop) */
+  .bottom-nav { display: none; }
+
+  @media (max-width: 700px) {
+    .nav-burger { display: flex; }
+    .nav-links {
+      display: none;
+      position: absolute;
+      top: calc(100% + 3px);
+      left: 0; right: 0;
+      background: rgba(14,20,32,0.98);
+      backdrop-filter: blur(16px);
+      border-bottom: 0.5px solid var(--border);
+      flex-direction: column;
+      padding: 12px 0;
+      gap: 0;
+      z-index: 99;
+    }
+    .nav-links.open { display: flex; }
+    .nav-links li { width: 100%; }
+    .nav-links a {
+      display: block;
+      padding: 13px 24px;
+      font-size: 15px;
+      border-radius: 0;
+    }
+    .nav-links a.active { color: var(--gold); }
+    .nav-add { border: none; padding: 13px 24px; border-radius: 0; }
+
+    /* Bottom nav */
+    .bottom-nav {
+      display: flex;
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: rgba(14,20,32,0.97);
+      backdrop-filter: blur(16px);
+      border-top: 0.5px solid var(--border);
+      padding: 8px 0 env(safe-area-inset-bottom, 8px);
+      z-index: 100;
+    }
+    .bottom-nav a {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      color: var(--text-faint);
+      text-decoration: none;
+      font-size: 10px;
+      padding: 4px 0;
+      transition: color 0.15s;
+    }
+    .bottom-nav a.active { color: var(--gold); }
+    .bottom-nav-add { color: var(--gold) !important; }
+    .bottom-nav-add svg { stroke: var(--gold); }
+
+    main { padding-bottom: 72px; }
+  }
+</style>

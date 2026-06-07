@@ -1,0 +1,169 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { supabase } from '../../lib/supabase.js';
+
+const url = new URL(Astro.request.url);
+const filterLesson = url.searchParams.get('lesson') || '';
+const filterType = url.searchParams.get('type') || '';
+const search = url.searchParams.get('q') || '';
+
+let query = supabase.from('words').select('*, lessons(number, title_ro)').order('id');
+if (filterLesson) query = query.eq('lesson_id', filterLesson);
+if (filterType) query = query.eq('type', filterType);
+if (search) query = query.or(`ro.ilike.%${search}%,fr.ilike.%${search}%`);
+
+const { data: words } = await query;
+const { data: lessons } = await supabase.from('lessons').select('id, number, title_ro').order('number');
+
+const types = [...new Set(words?.map(w => w.type).filter(Boolean))];
+const hasFilter = search || filterLesson || filterType;
+
+const srsLabel = (lvl) => {
+  if (lvl === 0) return { label: 'Nouveau', cls: 'badge-muted' };
+  if (lvl < 3)  return { label: 'En cours', cls: 'badge-gold' };
+  return { label: 'Maîtrisé', cls: 'badge-success' };
+};
+---
+
+<Layout title="Vocabulaire">
+  <div class="container page-vocab">
+
+    <div class="vocab-header">
+      <h1 class="serif">Vocabulaire</h1>
+      <span class="text-faint" style="font-size:14px;">{words?.length ?? 0} mots</span>
+    </div>
+
+    <!-- Filtres -->
+    <form method="GET" class="filter-form">
+      <input type="text" name="q" value={search} placeholder="Rechercher…" class="form-input filter-search" />
+      <select name="lesson" class="form-input filter-select">
+        <option value="">Toutes les leçons</option>
+        {lessons?.map(l => <option value={l.id} selected={filterLesson === String(l.id)}>#{l.number} {l.title_ro}</option>)}
+      </select>
+      <select name="type" class="form-input filter-select">
+        <option value="">Tous les types</option>
+        {types.map(t => <option value={t} selected={filterType === t}>{t}</option>)}
+      </select>
+      <div class="filter-actions">
+        <button type="submit" class="btn btn-primary">OK</button>
+        {hasFilter && <a href="/vocabulary" class="btn">✕</a>}
+      </div>
+    </form>
+
+    <!-- Résultats — cards sur mobile, table sur desktop -->
+    {words?.length === 0 ? (
+      <div style="text-align:center;padding:60px 0;color:var(--text-faint);">
+        <div class="serif" style="font-size:22px;margin-bottom:10px;">Aucun résultat</div>
+        {hasFilter && <a href="/vocabulary" class="btn" style="margin-top:8px;">Réinitialiser</a>}
+      </div>
+    ) : (
+      <>
+        <!-- Desktop : table -->
+        <div class="vocab-table-wrap">
+          <div class="vocab-table-head">
+            <span>Roumain</span><span>Français</span><span>Type</span><span>Leçon</span><span>Niveau</span>
+          </div>
+          {words?.map((word, i) => {
+            const srs = srsLabel(word.srs_level);
+            return (
+              <div class={`vocab-table-row ${i % 2 !== 0 ? 'alt' : ''}`}>
+                <span class="vt-ro">{word.ro}</span>
+                <span class="vt-fr">{word.fr}</span>
+                <span>{word.type ? <span class="badge badge-muted" style="font-size:11px;">{word.type}</span> : '—'}</span>
+                <span class="text-faint" style="font-size:13px;">#{word.lessons?.number}</span>
+                <span><span class={`badge ${srs.cls}`} style="font-size:11px;">{srs.label}</span></span>
+              </div>
+            );
+          })}
+        </div>
+
+        <!-- Mobile : cards -->
+        <div class="vocab-cards">
+          {words?.map(word => {
+            const srs = srsLabel(word.srs_level);
+            return (
+              <div class="vocab-card card">
+                <div class="vc-main">
+                  <div class="vc-ro">{word.ro}</div>
+                  <div class="vc-fr">{word.fr}</div>
+                </div>
+                <div class="vc-meta">
+                  {word.type && <span class="badge badge-muted">{word.type}</span>}
+                  {word.gender && <span class="badge badge-gold">{word.gender}</span>}
+                  <span class={`badge ${srs.cls}`}>{srs.label}</span>
+                  <span class="text-faint" style="font-size:11px;margin-left:auto;">#{word.lessons?.number}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </>
+    )}
+  </div>
+</Layout>
+
+<style>
+  .page-vocab { padding-top: 32px; padding-bottom: 40px; }
+  .vocab-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 20px; }
+  .vocab-header h1 { font-size: 30px; }
+
+  /* Filtres */
+  .filter-form {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+    align-items: center;
+  }
+  .filter-search { flex: 1; min-width: 140px; }
+  .filter-select { flex: 1; min-width: 130px; }
+  .filter-actions { display: flex; gap: 6px; }
+
+  /* Table desktop */
+  .vocab-cards { display: none; }
+  .vocab-table-wrap {
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .vocab-table-head {
+    display: grid;
+    grid-template-columns: 2fr 2fr 1fr 70px 90px;
+    padding: 9px 16px;
+    border-bottom: 0.5px solid var(--border);
+    background: rgba(255,255,255,0.02);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-faint);
+    gap: 12px;
+  }
+  .vocab-table-row {
+    display: grid;
+    grid-template-columns: 2fr 2fr 1fr 70px 90px;
+    padding: 11px 16px;
+    align-items: center;
+    border-top: 0.5px solid var(--border);
+    gap: 12px;
+  }
+  .vocab-table-row.alt { background: rgba(255,255,255,0.02); }
+  .vt-ro { font-size: 15px; font-weight: 500; }
+  .vt-fr { font-size: 14px; font-style: italic; color: var(--text-muted); }
+
+  /* Cards mobile */
+  .vocab-card { padding: 13px 15px; }
+  .vc-main { margin-bottom: 8px; }
+  .vc-ro { font-size: 16px; font-weight: 500; }
+  .vc-fr { font-size: 14px; font-style: italic; color: var(--text-muted); margin-top: 2px; }
+  .vc-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+  @media (max-width: 640px) {
+    .page-vocab { padding-top: 20px; }
+    .vocab-table-wrap { display: none; }
+    .vocab-cards { display: flex; flex-direction: column; gap: 8px; }
+    .filter-form { flex-direction: column; }
+    .filter-search, .filter-select { width: 100%; min-width: unset; }
+    .filter-actions { width: 100%; }
+    .filter-actions .btn { flex: 1; justify-content: center; }
+  }
+</style>
